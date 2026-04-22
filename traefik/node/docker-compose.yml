@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+
+  traefik:
+    image: traefik
+    container_name: traefik
+    ports:
+      - "70:80"
+      - "7070:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ../all.yaml:/etc/traefik/all.yaml:ro
+    networks:
+      - traefik
+
+  app1:
+    networks:
+      - traefik
+    build: .
+    container_name: app1
+    command: node server1.js
+    expose:
+      - "1111"
+
+  app2:
+    networks:
+      - traefik
+    build: .
+    container_name: app2
+    command: node server2.js
+    expose:
+      - "22222"
+
+  app3:
+    networks:
+      - traefik
+    build: .
+    container_name: app3
+    command: node server3.js
+    expose:
+      - "3333"
+
+networks:
+  traefik:
+    driver: bridge
+    attachable: true
