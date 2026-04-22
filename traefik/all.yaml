@@ -1,0 +1,35 @@
+http:
+  routers:
+    router1:
+      rule: "Host(`app1.local`)"
+      service: service1
+      entryPoints:
+        - web
+
+    router2:
+      rule: "Host(`app2.local`)"
+      service: service2
+      entryPoints:
+        - web
+
+    router3:
+      rule: "Host(`app3.local`)"
+      service: service3
+      entryPoints:
+        - web
+
+  services:
+    service1:
+      loadBalancer:
+        servers:
+          - url: "http://app1:1111"
+
+    service2:
+      loadBalancer:
+        servers:
+          - url: "http://app2:22222"
+
+    service3:
+      loadBalancer:
+        servers:
+          - url: "http://app3:3333"
