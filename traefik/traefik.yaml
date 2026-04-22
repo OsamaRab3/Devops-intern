@@ -2,6 +2,9 @@ entryPoints:
   web:
     address: ":80"
 
+  admin:
+    address: ":8081"
+
 api:
   dashboard: true
   insecure: true
@@ -9,4 +12,4 @@ api:
 providers:
   file:
     filename: /etc/traefik/all.yaml
-    watch: false
+    watch: true

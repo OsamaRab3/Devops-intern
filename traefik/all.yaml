@@ -18,6 +18,11 @@ http:
       entryPoints:
         - web
 
+    router4:
+      rule: "Host(`admin.local`)"
+      service: service4
+      entryPoints:
+        - admin
   services:
     service1:
       loadBalancer:
@@ -33,3 +38,8 @@ http:
       loadBalancer:
         servers:
           - url: "http://app3:3333"
+
+    service4:
+      loadBalancer:
+        servers:
+          - url: "http://admin:9000"
