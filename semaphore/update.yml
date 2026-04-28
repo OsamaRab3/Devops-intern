@@ -1,0 +1,30 @@
+---
+- name: Update System Packages
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update package cache (Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Upgrade all packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        upgrade: dist
+      when: ansible_os_family == "Debian"
+
+    - name: Remove unnecessary packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        autoremove: yes
+        purge: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Clean package cache (Debian/Ubuntu)
+      ansible.builtin.apt:
+        autoclean: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Display update completion message
+      ansible.builtin.debug:
+        msg: "System update completed successfully on {{ ansible_hostname }}"

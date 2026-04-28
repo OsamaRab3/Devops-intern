@@ -36,6 +36,17 @@ cmd_facts() {
     ansible all -i "$INVENTORY_FILE" -m setup
 }
 
+cmd_update() {
+    echo "=== Updating System Packages ==="
+    if [ -f "$SCRIPT_DIR/update.yml" ]; then
+        echo "Running update.yml..."
+        ansible-playbook -i "$INVENTORY_FILE" "$SCRIPT_DIR/update.yml"
+    else
+        echo "update.yml not found."
+        exit 1
+    fi
+}
+
 show_help() {
     cat << EOF
 Ansible Runner Script
@@ -47,12 +58,14 @@ COMMANDS:
     ansible     - Run Ansible playbook (default)
     ping        - Test connection to all hosts
     facts       - Gather facts from all hosts
+    update      - Update system packages on all hosts
     help        - Show this help message
 
 EXAMPLES:
     $0 ansible
     $0 ping
     $0 facts
+    $0 update
 
 EOF
 }
@@ -69,6 +82,9 @@ main() {
             ;;
         facts)
             cmd_facts
+            ;;
+        update)
+            cmd_update
             ;;
         help|--help|-h)
             show_help
