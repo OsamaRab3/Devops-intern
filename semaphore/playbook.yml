@@ -1,0 +1,6 @@
+---
+- name: Collect System Information from VMs
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - import_tasks: ansible/tasks/main.yml

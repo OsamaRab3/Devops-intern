@@ -1,0 +1,1 @@
+{"hostname": "debian", "os": "Debian 13.4", "kernel": "6.12.74+deb13+1-amd64", "architecture": "x86_64", "uptime": "up 2 days, 20 hours, 5 minutes", "cpu_cores": 2, "cpu_utilization": "4.2%", "memory_total_gb": 4.83, "memory_free_gb": 0.79, "gathered_at": "2026-04-28T08:30:10Z"}
