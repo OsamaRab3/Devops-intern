@@ -1,0 +1,92 @@
+---
+- name: Check required variables
+  fail:
+    msg: "zabbix_url and zabbix_auth_token must be defined"
+  when: not zabbix_url or not zabbix_auth_token
+
+- name: Set current timestamp
+  set_fact:
+    report_timestamp: "{{ ansible_date_time.iso8601 }}"
+    time_now: "{{ ansible_date_time.epoch | int }}"
+
+- name: Zabbix API - Get all enabled hosts
+  uri:
+    url: "{{ zabbix_url }}"
+    method: POST
+    body_format: json
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      method: "host.get"
+      params:
+        output:
+          - hostid
+          - host
+          - name
+          - status
+          - available
+        filter:
+          status: "0"
+        selectInterfaces:
+          - ip
+          - dns
+          - type
+      id: 1
+      auth: "{{ zabbix_auth_token }}"
+    return_content: yes
+    status_code: [200]
+  register: zabbix_hosts
+
+- name: Initialize hosts data structure
+  set_fact:
+    zabbix_hosts_data: []
+
+- name: Process each host and fetch metrics
+  include_tasks: fetch_host_metrics.yml
+  loop: "{{ zabbix_hosts.json.result | default([]) }}"
+  loop_control:
+    loop_var: host_item
+    label: "{{ host_item.name | default(host_item.host) }}"
+  when: zabbix_hosts.json.result is defined
+
+- name: Calculate summary statistics
+  set_fact:
+    report_summary:
+      total_hosts: "{{ zabbix_hosts_data | length }}"
+      running_hosts: "{{ zabbix_hosts_data | selectattr('server_status', 'equalto', 'UP') | list | length }}"
+      down_hosts: "{{ zabbix_hosts_data | selectattr('server_status', 'equalto', 'DOWN') | list | length }}"
+      total_problems: "{{ zabbix_hosts_data | map(attribute='problem_count') | map('int', 0) | sum }}"
+
+- name: Build grouped data structure by hostname patterns
+  set_fact:
+    zabbix_groups_data: >-
+      {% set groups = {} %}
+      {% set patterns = server_group_patterns | default([]) %}
+      {% set default_group = server_group_default | default('Other Servers') %}
+      {% for host in zabbix_hosts_data %}
+        {% set ns = namespace(matched=false) %}
+        {% for rule in patterns %}
+          {% if not ns.matched and host.hostname | lower | regex_search(rule.pattern) %}
+            {% set gname = rule.group %}
+            {% if gname not in groups %}{% set _ = groups.update({gname: []}) %}{% endif %}
+            {% set _ = groups[gname].append(host) %}
+            {% set ns.matched = true %}
+          {% endif %}
+        {% endfor %}
+        {% if not ns.matched %}
+          {% if default_group not in groups %}{% set _ = groups.update({default_group: []}) %}{% endif %}
+          {% set _ = groups[default_group].append(host) %}
+        {% endif %}
+      {% endfor %}
+      {% set result = [] %}
+      {% for gname, hosts in groups.items() | sort %}
+        {% set _ = result.append({'group_name': gname, 'hosts': hosts}) %}
+      {% endfor %}
+      {{ result | to_json }}
+
+- name: Generate HTML Report
+  template:
+    src: report.html.j2
+    dest: "{{ report_output_file }}"
+  delegate_to: localhost

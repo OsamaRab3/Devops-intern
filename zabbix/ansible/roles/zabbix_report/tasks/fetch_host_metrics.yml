@@ -1,0 +1,219 @@
+---
+- name: Set host context
+  set_fact:
+    current_hostid: "{{ host_item.hostid }}"
+    current_host: "{{ host_item.name | default(host_item.host) }}"
+    current_host_ip: "{{ (host_item.interfaces | default([]) | first | default({})).ip | default('N/A') }}"
+    current_host_available: "{{ host_item.available | default('0') }}"
+
+- name: Determine fallback server status
+  set_fact:
+    server_status: "{{ 'UP' if current_host_available == '1' else 'DOWN' }}"
+
+- name: Fetch availability items for host via Zabbix API
+  uri:
+    url: "{{ zabbix_url }}"
+    method: POST
+    body_format: json
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      method: "item.get"
+      params:
+        output: ["itemid", "name", "key_", "lastvalue", "lastclock"]
+        filter:
+          key_: ["zabbix[host,agent,available]", "zabbix[host,snmp,available]"]
+        hostids: "{{ current_hostid }}"
+      id: 1
+      auth: "{{ zabbix_auth_token }}"
+    return_content: yes
+    status_code: [200]
+  register: zabbix_avail_items
+  ignore_errors: yes
+
+- name: Extract availability item id
+  set_fact:
+    zabbix_avail_itemid: "{{ (zabbix_avail_items.json.result | default([]) | first | default({})).itemid | default('') }}"
+    zabbix_avail_lastvalue: "{{ (zabbix_avail_items.json.result | default([]) | first | default({})).lastvalue | default('N/A') }}"
+    zabbix_avail_lastclock: "{{ (zabbix_avail_items.json.result | default([]) | first | default({})).lastclock | default(0) }}"
+
+- name: Fetch availability history (trend)
+  uri:
+    url: "{{ zabbix_url }}"
+    method: POST
+    body_format: json
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      method: "trend.get"
+      params:
+        output: extend
+        itemids: "{{ zabbix_avail_itemid }}"
+        time_from: "{{ (ansible_date_time.epoch | int) - (metrics_days_back | default(30) | int * 86400) }}"
+      id: 1
+      auth: "{{ zabbix_auth_token }}"
+    return_content: yes
+    status_code: [200]
+  register: zabbix_avail_trends
+  ignore_errors: yes
+  when: zabbix_avail_itemid != ""
+
+- name: Calculate availability from trends
+  set_fact:
+    system_availability_percent: >-
+      {% set results = zabbix_avail_trends.json.result | default([]) if zabbix_avail_trends.json is defined else [] %}
+      {% if results | length > 0 %}
+        {% set vals = results | map(attribute='value_avg') | map('float') | list %}
+        {{ (vals | sum / vals | length * 100) | round(2) }}
+      {% elif zabbix_avail_itemid != "" and zabbix_avail_lastvalue != 'N/A' %}
+        {{ (zabbix_avail_lastvalue | float * 100) | round(2) }}
+      {% else %}
+        N/A
+      {% endif %}
+
+- name: Fetch all items for host via Zabbix API
+  uri:
+    url: "{{ zabbix_url }}"
+    method: POST
+    body_format: json
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      method: "item.get"
+      params:
+        output: extend
+        hostids: "{{ current_hostid }}"
+      id: 1
+      auth: "{{ zabbix_auth_token }}"
+    return_content: yes
+    status_code: [200]
+  register: host_items
+  ignore_errors: yes
+
+- name: Fetch problems for host via Zabbix API
+  uri:
+    url: "{{ zabbix_url }}"
+    method: POST
+    body_format: json
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      method: "problem.get"
+      params:
+        output: extend
+        hostids: "{{ current_hostid }}"
+        recent: true
+        sortfield: "eventid"
+        sortorder: "DESC"
+      id: 1
+      auth: "{{ zabbix_auth_token }}"
+    return_content: yes
+    status_code: [200]
+  register: host_problems
+  ignore_errors: yes
+
+- name: Extract metrics from items
+  set_fact:
+    cpu_idle: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^system.cpu.util\\[.*idle.*') | list | first | default({})).lastvalue | default('N/A') }}"
+    cpu_fallback: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^system.cpu.util') | list | first | default({})).lastvalue | default('N/A') }}"
+    memory_total_bytes: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^vm.memory.size\\[.*total.*\\]') | list | first | default({})).lastvalue | default(0) }}"
+    memory_available_bytes: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^vm.memory.size\\[.*available.*\\]') | list | first | default({})).lastvalue | default(0) }}"
+    memory_pavailable_percent: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^vm.memory.size\\[.*pavailable.*\\]') | list | first | default({})).lastvalue | default('N/A') }}"
+    uptime_seconds: "{{ (host_items.json.result | default([]) | selectattr('key_', 'equalto', 'system.uptime') | list | first | default({})).lastvalue | default(0) }}"
+    disk_used_percent: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^vfs.fs.size\\[/,pused\\]') | list | first | default(host_items.json.result | default([]) | selectattr('key_', 'match', '^vfs.fs.size\\[.*,pused\\]') | list | first | default({}))).lastvalue | default('N/A') }}"
+    disk_used_bytes: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^vfs.fs.size\\[/,used\\]') | list | first | default(host_items.json.result | default([]) | selectattr('key_', 'match', '^vfs.fs.size\\[.*,used\\]') | list | first | default({}))).lastvalue | default(0) }}"
+    disk_total_bytes: "{{ (host_items.json.result | default([]) | selectattr('key_', 'match', '^vfs.fs.size\\[/,total\\]') | list | first | default(host_items.json.result | default([]) | selectattr('key_', 'match', '^vfs.fs.size\\[.*,total\\]') | list | first | default({}))).lastvalue | default(0) }}"
+    network_in_bytes: >-
+      {% set interfaces = host_items.json.result | default([]) | selectattr('key_', 'match', '^net.if.in\\[') | rejectattr('key_', 'match', '.*"?(lo|loopback)"?\\].*') | list %}
+      {% set vals = interfaces | map(attribute='lastvalue') | map('float') | list %}
+      {{ vals | sum if vals | length > 0 else 0 }}
+    network_out_bytes: >-
+      {% set interfaces = host_items.json.result | default([]) | selectattr('key_', 'match', '^net.if.out\\[') | rejectattr('key_', 'match', '.*"?(lo|loopback)"?\\].*') | list %}
+      {% set vals = interfaces | map(attribute='lastvalue') | map('float') | list %}
+      {{ vals | sum if vals | length > 0 else 0 }}
+
+- name: Calculate derived metrics
+  set_fact:
+    cpu_usage_percent: >-
+      {% if cpu_idle != 'N/A' %}
+      {{ (100 - (cpu_idle | float)) | round(2) }}
+      {% elif cpu_fallback != 'N/A' %}
+      {{ (cpu_fallback | float) | round(2) }}
+      {% else %}N/A{% endif %}
+    memory_used_percent: >-
+      {% if memory_pavailable_percent != 'N/A' %}{{ (100 - memory_pavailable_percent | float) | round(2) }}
+      {% elif memory_total_bytes | float > 0 %}{{ ((memory_total_bytes | float - memory_available_bytes | float) / (memory_total_bytes | float) * 100) | round(2) }}
+      {% else %}N/A{% endif %}
+    memory_total_gb: "{{ (memory_total_bytes | float / 1073741824) | round(2) if memory_total_bytes | float > 0 else 'N/A' }}"
+    memory_used_gb: "{{ ((memory_total_bytes | float - memory_available_bytes | float) / 1073741824) | round(2) if memory_total_bytes | float > 0 else 'N/A' }}"
+    disk_used_percent: "{{ (disk_used_percent | float) | round(2) if disk_used_percent != 'N/A' else 'N/A' }}"
+    disk_used_gb: "{{ (disk_used_bytes | float / 1073741824) | round(2) if disk_used_bytes | float > 0 else 'N/A' }}"
+    disk_total_gb: "{{ (disk_total_bytes | float / 1073741824) | round(2) if disk_total_bytes | float > 0 else 'N/A' }}"
+    network_in_mbps: "{{ (network_in_bytes | float / 1048576) | round(2) if network_in_bytes | float > 0 else 0 }}"
+    network_out_mbps: "{{ (network_out_bytes | float / 1048576) | round(2) if network_out_bytes | float > 0 else 0 }}"
+    uptime_formatted: >-
+      {% set up = uptime_seconds | float | int %}
+      {% if up > 0 %}
+        {% set days = (up // 86400) %}
+        {% set hours = ((up % 86400) // 3600) %}
+        {% set minutes = ((up % 3600) // 60) %}
+        {% if days > 0 %}{{ days }}d {% endif %}{% if hours > 0 %}{{ hours }}h {% endif %}{% if minutes > 0 %}{{ minutes }}m{% endif %}
+      {% else %}N/A{% endif %}
+
+- name: Extract disks list
+  set_fact:
+    disks_list: >-
+      {% set dlist = [] %}
+      {% set all_disks = host_items.json.result | default([]) | selectattr('key_', 'match', '^vfs.fs.size\\[.*,total\\]') | map(attribute='key_') | list %}
+      {% for dkey in all_disks %}
+        {% set fs_name = dkey | regex_replace('^vfs\\.fs\\.size\\[(.*),total\\]$', '\\1') %}
+        {% set total_b = (host_items.json.result | selectattr('key_', 'equalto', dkey) | first).lastvalue | float %}
+        {% set used_item = host_items.json.result | selectattr('key_', 'equalto', 'vfs.fs.size[' ~ fs_name ~ ',used]') | first | default(none) %}
+        {% set pused_item = host_items.json.result | selectattr('key_', 'equalto', 'vfs.fs.size[' ~ fs_name ~ ',pused]') | first | default(none) %}
+        {% set used_b = used_item.lastvalue | float if used_item else 0 %}
+        {% set pused_val = pused_item.lastvalue | float if pused_item else ((used_b / total_b * 100) if total_b > 0 else 0) %}
+        {% if total_b > 0 %}
+          {% set _ = dlist.append({
+            'name': fs_name,
+            'total_gb': (total_b / 1073741824) | round(2),
+            'used_gb': (used_b / 1073741824) | round(2),
+            'used_percent': pused_val | round(2)
+          }) %}
+        {% endif %}
+      {% endfor %}
+      {{ dlist | to_json }}
+
+- name: Finalize server status
+  set_fact:
+    server_status: >-
+      {% if zabbix_avail_lastvalue | default('N/A') == '1' %}UP
+      {% elif zabbix_avail_lastvalue | default('N/A') == '0' %}DOWN
+      {% elif current_host_available | default('0') == '1' %}UP
+      {% else %}DOWN{% endif %}
+
+- name: Build host data structure
+  set_fact:
+    host_data:
+      hostname: "{{ current_host }}"
+      ip_address: "{{ current_host_ip }}"
+      server_status: "{{ server_status | default('DOWN') | trim }}"
+      cpu_usage_percent: "{{ cpu_usage_percent | default('N/A') }}"
+      memory_total_gb: "{{ memory_total_gb | default('N/A') }}"
+      memory_used_gb: "{{ memory_used_gb | default('N/A') }}"
+      memory_used_percent: "{{ memory_used_percent | default('N/A') }}"
+      system_uptime: "{{ uptime_formatted | default('N/A') }}"
+      uptime_seconds: "{{ uptime_seconds | default(0) }}"
+      system_availability_percent: "{{ system_availability_percent | default('N/A') }}"
+      disks: "{{ disks_list | from_json if disks_list != '' else [] }}"
+      network_in_mbps: "{{ network_in_mbps | default('N/A') }}"
+      network_out_mbps: "{{ network_out_mbps | default('N/A') }}"
+      problem_count: "{{ host_problems.json.result | default([]) | length }}"
+      problems: "{{ host_problems.json.result | default([]) }}"
+
+- name: Add host to data structure
+  set_fact:
+    zabbix_hosts_data: "{{ zabbix_hosts_data + [host_data] }}"
