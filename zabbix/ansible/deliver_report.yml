@@ -1,106 +1,6 @@
-# ---
-# # Converts the generated Zabbix HTML report to PDF and sends it via email.
-# # Run AFTER generate_report.yml has already created zabbix_report.html.
-# #
-# # Usage:
-# #   ansible-playbook -i inventories/hosts.ini deliver_report.yml
-# #   ansible-playbook -i inventories/hosts.ini deliver_report.yml -e "email_recipient=ops@example.com"
-
-# - name: Export Zabbix Report to PDF and Send via Email
-#   hosts: zabbix_servers
-#   gather_facts: false
-#   vars_files:
-#     - group_vars/all.yml
-#   vars:
-#     html_report: "{{ report_output_file | expanduser }}"
-#     pdf_report: "{{ report_output_file | expanduser | regex_replace('\\.html$', '.pdf') }}"
-#     email_recipient: "{{ smtp_from }}"          # override with -e email_recipient=you@example.com
-#     project_dir: "{{ playbook_dir }}"
-
-#   tasks:
-#     - name: Check HTML report exists
-#       stat:
-#         path: "{{ html_report }}"
-#       register: html_stat
-
-#     - name: Fail if HTML report is missing
-#       fail:
-#         msg: "HTML report not found at {{ html_report }}. Run generate_report.yml first."
-#       when: not html_stat.stat.exists
-
-#     - name: Export HTML → PDF (expand all accordions)
-#       shell: |
-#         TEMP_HTML="$(mktemp /tmp/zabbix_expanded_XXXXXX.html)"
-#         trap 'rm -f "$TEMP_HTML"' EXIT
-#         sed \
-#           -e 's/class="collapse host-collapse"/class="collapse host-collapse show"/g' \
-#           -e 's/class="collapse group-collapse"/class="collapse group-collapse show"/g' \
-#           "{{ html_report }}" > "$TEMP_HTML"
-#         CHROME=""
-#         for c in google-chrome google-chrome-stable chromium chromium-browser; do
-#           command -v "$c" &>/dev/null && CHROME="$c" && break
-#         done
-#         if [ -n "$CHROME" ]; then
-#           "$CHROME" --headless=new --disable-gpu --no-sandbox \
-#             --disable-dev-shm-usage \
-#             --run-all-compositor-stages-before-draw \
-#             --print-to-pdf="{{ pdf_report }}" \
-#             --print-to-pdf-no-header \
-#             "file://$TEMP_HTML"
-#         elif command -v wkhtmltopdf &>/dev/null; then
-#           wkhtmltopdf --enable-local-file-access -O Landscape --javascript-delay 500 \
-#             "$TEMP_HTML" "{{ pdf_report }}"
-#         else
-#           echo "ERROR: No PDF engine found (install google-chrome or wkhtmltopdf)" >&2
-#           exit 1
-#         fi
-#       args:
-#         executable: /bin/bash
-#       register: pdf_result
-
-#     - name: PDF export result
-#       debug:
-#         msg: "PDF generated at {{ pdf_report }}"
-
-#     - name: Send PDF report via email
-#       shell: |
-#         FROM="{{ smtp_from }}"
-#         RECIPIENT="{{ email_recipient }}"
-#         SUBJECT="Zabbix Monitoring Report - $(date '+%Y-%m-%d')"
-#         BOUNDARY="----=_ZabbixReport_$(date +%s)"
-#         FILENAME="$(basename "{{ pdf_report }}")"
-#         {
-#           echo "From: Zabbix Monitor <${FROM}>"
-#           echo "To: ${RECIPIENT}"
-#           echo "Subject: ${SUBJECT}"
-#           echo "MIME-Version: 1.0"
-#           echo "Content-Type: multipart/mixed; boundary=\"${BOUNDARY}\""
-#           echo ""
-#           echo "--${BOUNDARY}"
-#           echo "Content-Type: text/plain; charset=UTF-8"
-#           echo ""
-#           echo "Please find the attached Zabbix Monitoring Report (PDF) generated on $(date '+%Y-%m-%d %H:%M:%S')."
-#           echo ""
-#           echo "--${BOUNDARY}"
-#           echo "Content-Type: application/pdf"
-#           echo "Content-Disposition: attachment; filename=\"${FILENAME}\""
-#           echo "Content-Transfer-Encoding: base64"
-#           echo ""
-#           base64 "{{ pdf_report }}"
-#           echo ""
-#           echo "--${BOUNDARY}--"
-#         } | msmtp --account=default "$RECIPIENT"
-#       args:
-#         executable: /bin/bash
-#       register: email_result
-
-#     - name: Email delivery confirmation
-#       debug:
-#         msg: "Report emailed to {{ email_recipient }} ✓"
-
 ---
-# Converts the generated Zabbix HTML report to PDF and sends it via email.
-# Uses wkhtmltopdf only (no Chrome/Chromium required).
+# Converts Zabbix HTML report to PDF and sends it via email
+# Uses wkhtmltopdf only (no Chrome/Chromium required)
 
 - name: Export Zabbix Report to PDF and Send via Email
   hosts: zabbix_servers
@@ -136,7 +36,7 @@
 
     - name: Export HTML report to PDF
       shell: |
-        TEMP_HTML="$(mktemp /tmp/zabbix_expanded_XXXXXX.html)"
+        TEMP_HTML="/tmp/zabbix_expanded_$$.html"
 
         sed \
           -e 's/class="collapse host-collapse"/class="collapse host-collapse show"/g' \
@@ -177,7 +77,6 @@
           echo "--${BOUNDARY}"
           echo "Content-Type: text/plain; charset=UTF-8"
           echo ""
-
           echo "Please find the attached Zabbix Monitoring Report generated on $(date '+%Y-%m-%d %H:%M:%S')."
           echo ""
 
@@ -191,7 +90,6 @@
 
           echo ""
           echo "--${BOUNDARY}--"
-
         } | msmtp --account=default "$RECIPIENT"
       args:
         executable: /bin/bash
