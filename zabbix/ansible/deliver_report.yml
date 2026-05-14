@@ -4,7 +4,7 @@
 
 - name: Export Zabbix Report to PDF and Send via Email
   hosts: zabbix_servers
-  become: true
+  become: false
   gather_facts: false
 
   vars_files:
