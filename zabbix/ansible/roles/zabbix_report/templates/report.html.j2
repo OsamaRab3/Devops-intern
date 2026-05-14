@@ -38,7 +38,8 @@
 {% macro server_status_badge(status) %}
   {% if status == 'UP' %}bg-success
   {% elif status == 'DOWN' %}bg-danger
-  {% else %}bg-warning{% endif %}
+  {% elif status == 'STALE' %}bg-warning text-dark
+  {% else %}bg-secondary{% endif %}
 {% endmacro %}
 
 {% macro progress_color(val) %}
@@ -73,7 +74,7 @@
                 {% if groups_list is defined and groups_list | length > 0 %}
                 {% for group in groups_list %}
                 <li class="nav-item">
-                    <a class="nav-link ps-4 small" href="#group-{{ loop.index }}"><i class="fas fa-folder me-1"></i> {{ group.group_name }}</a>
+                    <a class="nav-link ps-4 small" href="#group-{{ loop.index }}"><i class="fas fa-folder me-1"></i> {{ group.group_name if group is mapping else group }}</a>
                 </li>
                 {% endfor %}
                 {% endif %}
@@ -118,10 +119,24 @@
                         </div>
                     </div>
                     <div class="col-md-3 mb-3">
-                        <div class="card bg-dark border-secondary text-white text-center p-3 h-100 shadow-sm card-stat">
-                            <i class="fas fa-bug fs-2 mb-2"></i>
-                            <h5>Problems</h5>
-                            <h2 class="display-5 fw-bold {% if report_summary.total_problems | int > 0 %}text-danger{% else %}text-success{% endif %}">{{ report_summary.total_problems | default(0) }}</h2>
+                        <div class="card bg-warning text-dark text-center p-3 h-100 shadow-sm card-stat border-0">
+                            <i class="fas fa-clock fs-2 mb-2"></i>
+                            <h5>Stale</h5>
+                            <h2 class="display-5 fw-bold">{{ report_summary.stale_hosts | default(0) }}</h2>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-4 mb-3">
+                        <div class="card bg-dark border-secondary p-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="metric-label">Total Active Problems</div>
+                                    <div class="metric-value {% if report_summary.total_problems | int > 0 %}text-danger{% else %}text-success{% endif %} fs-4">{{ report_summary.total_problems | default(0) }}</div>
+                                </div>
+                                <i class="fas fa-bug {% if report_summary.total_problems | int > 0 %}text-danger{% else %}text-success{% endif %} fs-3"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -146,13 +161,17 @@
                         <div class="card-header group-header d-flex justify-content-between align-items-center px-4 py-3" data-bs-toggle="collapse" data-bs-target="#group-body-{{ group_idx }}">
                             <div class="d-flex align-items-center">
                                 <i class="fas fa-folder-open me-2 text-info"></i>
-                                <h5 class="mb-0 text-white">{{ group.group_name }}</h5>
-                                <span class="badge bg-secondary ms-3 group-badge">{{ group.hosts | length }} server{{ 's' if group.hosts | length != 1 }}</span>
-                                {% set group_up = group.hosts | selectattr('server_status', 'equalto', 'UP') | list | length %}
-                                {% set group_down = group.hosts | length - group_up %}
+                                <h5 class="mb-0 text-white">{{ group.group_name if group is mapping else group }}</h5>
+                                <span class="badge bg-secondary ms-3 group-badge">{{ group.hosts | length if group is mapping else 0 }} server{{ 's' if (group.hosts | length if group is mapping else 0) != 1 }}</span>
+                                {% set group_up = group.hosts | selectattr('server_status', 'equalto', 'UP') | list | length if group is mapping else 0 %}
+                                {% set group_down = group.hosts | selectattr('server_status', 'equalto', 'DOWN') | list | length if group is mapping else 0 %}
+                                {% set group_stale = group.hosts | selectattr('server_status', 'equalto', 'STALE') | list | length if group is mapping else 0 %}
                                 <span class="badge bg-success ms-2 group-badge">{{ group_up }} UP</span>
                                 {% if group_down > 0 %}
                                 <span class="badge bg-danger ms-1 group-badge">{{ group_down }} DOWN</span>
+                                {% endif %}
+                                {% if group_stale > 0 %}
+                                <span class="badge bg-warning text-dark ms-1 group-badge">{{ group_stale }} STALE</span>
                                 {% endif %}
                             </div>
                             <i class="fas fa-chevron-down text-muted"></i>
@@ -166,9 +185,9 @@
                                     <div class="card-header border-secondary d-flex justify-content-between align-items-center px-3 py-2" style="cursor: pointer;">
                                         <div class="d-flex align-items-center" data-bs-toggle="collapse" data-bs-target="#{{ host_uid }}" style="flex: 1; cursor: pointer;">
                                             <i class="fas fa-server me-2 text-muted"></i>
-                                            <h6 class="mb-0 text-white">{{ host.hostname }}</h6>
-                                            <span class="badge {{ server_status_badge(host.server_status) }} ms-2">{{ host.server_status }}</span>
-                                            <span class="text-muted ms-3 small">{{ host.ip_address }}</span>
+                                            <h6 class="mb-0 text-white">{{ host.hostname if host is mapping else 'Unknown' }}</h6>
+                                            <span class="badge {{ server_status_badge(host.server_status if host is mapping else 'DOWN') }} ms-2">{{ host.server_status if host is mapping else 'DOWN' }}</span>
+                                            <span class="text-muted ms-3 small">{{ host.ip_address if host is mapping else 'N/A' }}</span>
                                         </div>
                                         <button class="btn btn-sm btn-outline-light btn-expand" data-bs-toggle="collapse" data-bs-target="#{{ host_uid }}">
                                             <i class="fas fa-chevron-down"></i>
@@ -182,52 +201,52 @@
                                                 <tbody>
                                                     <tr>
                                                         <td class="metric-label" style="width:180px;">CPU Usage</td>
-                                                        <td class="metric-value text-white">{{ host.cpu_usage_percent }}%</td>
-                                                        <td style="width:40%;">{{ render_progress_bar(host.cpu_usage_percent) }}</td>
+                                                        <td class="metric-value text-white">{{ host.cpu_usage_percent if host is mapping else 'N/A' }}%</td>
+                                                        <td style="width:40%;">{{ render_progress_bar(host.cpu_usage_percent if host is mapping else 'N/A') }}</td>
                                                     </tr>
                                                     <tr>
                                                         <td class="metric-label">Memory Usage</td>
-                                                        <td class="metric-value text-white">{{ host.memory_used_percent }}% <span class="text-muted small">({{ host.memory_used_gb }} / {{ host.memory_total_gb }} GB)</span></td>
-                                                        <td>{{ render_progress_bar(host.memory_used_percent) }}</td>
+                                                        <td class="metric-value text-white">{{ host.memory_used_percent if host is mapping else 'N/A' }}% <span class="text-muted small">({{ host.memory_used_gb if host is mapping else 'N/A' }} / {{ host.memory_total_gb if host is mapping else 'N/A' }} GB)</span></td>
+                                                        <td>{{ render_progress_bar(host.memory_used_percent if host is mapping else 'N/A') }}</td>
                                                     </tr>
                                                     <tr>
                                                         <td class="metric-label">System Uptime</td>
-                                                        <td class="metric-value text-white" colspan="2">{{ host.system_uptime }}</td>
+                                                        <td class="metric-value text-white" colspan="2">{{ host.system_uptime if host is mapping else 'N/A' }}</td>
                                                     </tr>
                                                     <tr>
                                                         <td class="metric-label">Availability (30d)</td>
                                                         <td class="metric-value text-white" colspan="2">
-                                                            {% if host.system_availability_percent != 'N/A' %}{{ host.system_availability_percent }}%
+                                                            {% if host.system_availability_percent != 'N/A' and host is mapping %}{{ host.system_availability_percent }}%
                                                             {% else %}<span class="text-muted">Not Configured</span>{% endif %}
                                                         </td>
                                                     </tr>
                                                     <tr>
                                                         <td class="metric-label">Network Traffic</td>
                                                         <td class="metric-value text-white" colspan="2">
-                                                            <span class="text-success"><i class="fas fa-arrow-down me-1"></i>IN: {{ host.network_in_mbps }} MB/s</span>
-                                                            <span class="ms-3 text-warning"><i class="fas fa-arrow-up me-1"></i>OUT: {{ host.network_out_mbps }} MB/s</span>
+                                                            <span class="text-success"><i class="fas fa-arrow-down me-1"></i>IN: {{ host.network_in_mb_s if host is mapping else 'N/A' }} MB/s</span>
+                                                            <span class="ms-3 text-warning"><i class="fas fa-arrow-up me-1"></i>OUT: {{ host.network_out_mb_s if host is mapping else 'N/A' }} MB/s</span>
                                                         </td>
                                                     </tr>
                                                     <tr>
                                                         <td class="metric-label">Active Problems</td>
-                                                        <td class="metric-value {% if host.problem_count | int > 0 %}text-danger{% else %}text-success{% endif %}" colspan="2">{{ host.problem_count }}</td>
+                                                        <td class="metric-value {% if host is mapping and host.problem_count | int > 0 %}text-danger{% else %}text-success{% endif %}" colspan="2">{{ host.problem_count if host is mapping else 0 }}</td>
                                                     </tr>
                                                 </tbody>
                                             </table>
 
                                             <!-- Disk Usage -->
-                                            {% if host.disks is defined and host.disks | length > 0 %}
+                                            {% if host.disks is defined and host.disks | length > 0 and host is mapping %}
                                             <div class="metric-label mb-2">Disk Usage</div>
                                             <div class="row">
                                                 {% for disk in host.disks %}
                                                 <div class="col-md-4 mb-2">
                                                     <div class="card bg-black bg-opacity-25 border-secondary p-2">
                                                         <div class="d-flex justify-content-between text-white small">
-                                                            <span><i class="fas fa-hdd me-1"></i> {{ disk.name }}</span>
-                                                            <span class="fw-bold">{{ disk.used_percent }}%</span>
+                                                            <span><i class="fas fa-hdd me-1"></i> {{ disk.name if disk is mapping else disk }}</span>
+                                                            <span class="fw-bold">{{ disk.used_percent if disk is mapping else 'N/A' }}%</span>
                                                         </div>
-                                                        <div class="text-muted" style="font-size: 0.72rem;">{{ disk.used_gb }} GB / {{ disk.total_gb }} GB</div>
-                                                        {{ render_progress_bar(disk.used_percent) }}
+                                                        <div class="text-muted" style="font-size: 0.72rem;">{{ disk.used_gb if disk is mapping else 'N/A' }} GB / {{ disk.total_gb if disk is mapping else 'N/A' }} GB &middot; <span class="badge bg-secondary" style="font-size:0.65rem;">{{ disk.type | default('Standard') if disk is mapping else 'Standard' }}</span></div>
+                                                        {{ render_progress_bar(disk.used_percent if disk is mapping else 'N/A') }}
                                                     </div>
                                                 </div>
                                                 {% endfor %}
@@ -235,16 +254,16 @@
                                             {% endif %}
 
                                             <!-- Recent Problems -->
-                                            {% if host.problems | length > 0 %}
+                                            {% if host.problems is defined and host.problems | length > 0 and host is mapping %}
                                             <div class="mt-3">
                                                 <div class="metric-label mb-1">Recent Problems</div>
                                                 <table class="table table-dark table-sm mb-0">
                                                     <tbody>
                                                         {% for problem in host.problems[:5] %}
                                                         <tr>
-                                                            <td class="small">{{ problem.name }}</td>
+                                                            <td class="small">{{ problem.name if problem is mapping else problem }}</td>
                                                             <td class="small text-end">
-                                                                <span class="badge bg-danger">Severity {{ problem.severity }}</span>
+                                                                <span class="badge bg-danger">Severity {{ problem.severity if problem is mapping else 'N/A' }}</span>
                                                             </td>
                                                         </tr>
                                                         {% endfor %}
@@ -287,15 +306,15 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for host in zabbix_hosts_data %}
-                                    {% for problem in host.problems %}
+                                    {% for host in zabbix_hosts_data if host is mapping %}
+                                    {% for problem in host.problems if host.problems is defined %}
                                     <tr>
-                                        <td class="fw-bold">{{ host.hostname }}</td>
-                                        <td>{{ problem.name }}</td>
+                                        <td class="fw-bold">{{ host.hostname if host is mapping else 'Unknown' }}</td>
+                                        <td>{{ problem.name if problem is mapping else problem }}</td>
                                         <td>
-                                            <span class="badge bg-danger">{{ problem.severity }}</span>
+                                            <span class="badge bg-danger">{{ problem.severity if problem is mapping else 'N/A' }}</span>
                                         </td>
-                                        <td class="small">{{ problem.clock | default('N/A') }}</td>
+                                        <td class="small">{{ problem.clock | default('N/A') if problem is mapping else 'N/A' }}</td>
                                     </tr>
                                     {% endfor %}
                                     {% endfor %}
