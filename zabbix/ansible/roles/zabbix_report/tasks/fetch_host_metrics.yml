@@ -203,10 +203,10 @@
       uptime_seconds: "{{ uptime_seconds | default(0) }}"
       system_availability_percent: "{{ system_availability_percent | default('N/A') | trim }}"
       disks: "{{ disks_list | from_json if disks_list is defined and disks_list | trim != '' else [] }}"
-      network_in_mbps: "{{ network_in_mbps | default('N/A') | trim }}"
-      network_out_mbps: "{{ network_out_mbps | default('N/A') | trim }}"
-      problem_count: "{{ host_problems.json.result | default([]) | length }}"
-      problems: "{{ host_problems.json.result | default([]) }}"
+      network_in_mb_s: "{{ network_in_mb_s | default('N/A') | trim }}"
+      network_out_mb_s: "{{ network_out_mb_s | default('N/A') | trim }}"
+      problem_count: "{{ (host_problems.json.result | default([])) | length if host_problems.json is defined else 0 }}"
+      problems: "{{ host_problems.json.result | default([]) if host_problems.json is defined else [] }}"
 
 - name: Add host to data structure
   set_fact:
