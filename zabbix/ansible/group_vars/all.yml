@@ -1,0 +1,43 @@
+---
+grafana_url: "{{ lookup('ini', 'GRAFANA_URL type=properties file=.env') }}"
+grafana_auth_token: "{{ lookup('ini', 'GRAFANA_AUTH_TOKEN type=properties file=.env') }}"
+
+# Zabbix API credentials (also loaded from .env)
+zabbix_url: "{{ lookup('ini', 'ZABBIX_URL type=properties file=.env') }}"
+zabbix_auth_token: "{{ lookup('ini', 'ZABBIX_AUTH_TOKEN type=properties file=.env') }}"
+
+# Output configuration
+report_output_file: "~/Workspace/DevOps-intern/zabbix/ansible/zabbix_report.html"
+monitoring_data_output: "~/Workspace/DevOps-intern/zabbix/ansible/monitoring_data.json"
+monitoring_html_output: "~/Workspace/DevOps-intern/zabbix/ansible/monitoring_data.html"
+
+# Metrics extraction settings
+metrics_days_back: 30
+
+# Server grouping patterns (hostname regex → group name)
+# Order matters: first match wins. Case-insensitive.
+server_group_patterns:
+  - pattern: "stg|stage|staging"
+    group: "Staging"
+  - pattern: "test|testing"
+    group: "Testing"
+  - pattern: "dev|development"
+    group: "Development"
+  - pattern: "prod|production"
+    group: "Production"
+  - pattern: "db|database|mysql|postgres|mongo|redis|sql"
+    group: "Database Servers"
+  - pattern: "api|backend|web|app"
+    group: "Backend Services"
+  - pattern: "monitor|zabbix|grafana|nagios"
+    group: "Monitoring Infrastructure"
+  - pattern: "net|switch|router|fw|firewall"
+    group: "Networking"
+server_group_default: "Other Servers"
+
+# SMTP settings (loaded from .env)
+smtp_host: "{{ lookup('ini', 'SMTP_HOST type=properties file=.env') }}"
+smtp_port: "{{ lookup('ini', 'SMTP_PORT type=properties file=.env') }}"
+smtp_from: "{{ lookup('ini', 'SMTP_FROM type=properties file=.env') }}"
+smtp_user: "{{ lookup('ini', 'SMTP_USER type=properties file=.env') }}"
+smtp_password: "{{ lookup('ini', 'SMTP_PASSWORD type=properties file=.env') }}"

@@ -56,6 +56,7 @@
       total_hosts: "{{ zabbix_hosts_data | length }}"
       running_hosts: "{{ zabbix_hosts_data | selectattr('server_status', 'equalto', 'UP') | list | length }}"
       down_hosts: "{{ zabbix_hosts_data | selectattr('server_status', 'equalto', 'DOWN') | list | length }}"
+      stale_hosts: "{{ zabbix_hosts_data | selectattr('server_status', 'equalto', 'STALE') | list | length }}"
       total_problems: "{{ zabbix_hosts_data | map(attribute='problem_count') | map('int', 0) | sum }}"
 
 - name: Build grouped data structure by hostname patterns
