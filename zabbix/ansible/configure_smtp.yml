@@ -1,0 +1,55 @@
+---
+- name: Configure SMTP mail relay using msmtp
+  hosts: all
+  become: true
+  vars_files:
+    - group_vars/all.yml
+
+  tasks:
+    - name: Install msmtp and msmtp-mta (replaces sendmail/mailx MTA)
+      apt:
+        name:
+          - msmtp
+          - msmtp-mta
+          - mailutils
+        state: present
+        update_cache: false
+
+    - name: Deploy system-wide msmtp configuration
+      template:
+        src: roles/zabbix_report/templates/msmtprc.j2
+        dest: /etc/msmtprc
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy user-level msmtp configuration (~/.msmtprc)
+      template:
+        src: roles/zabbix_report/templates/msmtprc.j2
+        dest: "{{ ansible_env.HOME }}/.msmtprc"
+        owner: "{{ ansible_env.USER }}"
+        group: "{{ ansible_env.USER }}"
+        mode: "0600"
+
+    - name: Create msmtp log file
+      file:
+        path: /var/log/msmtp.log
+        state: touch
+        owner: root
+        group: adm
+        mode: "0664"
+
+    - name: Verify msmtp config syntax
+      command: msmtp --serverinfo --account=default
+      register: msmtp_test
+      ignore_errors: true
+
+    - name: Show msmtp server info
+      debug:
+        msg: "{{ msmtp_test.stdout_lines }}"
+      when: msmtp_test.rc == 0
+
+    - name: Warn if msmtp config has issues
+      debug:
+        msg: "Warning: msmtp test failed. Check /etc/msmtprc credentials."
+      when: msmtp_test.rc != 0

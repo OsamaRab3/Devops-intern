@@ -1,0 +1,9 @@
+---
+- name: Generate Zabbix HTML Monitoring Report
+  hosts: zabbix_servers
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+
+  roles:
+    - zabbix_report
