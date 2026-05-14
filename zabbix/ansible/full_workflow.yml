@@ -1,0 +1,8 @@
+---
+# This wrapper playbook executes both generation and delivery sequentially.
+# It is specifically designed for Semaphore CI where execution environments are
+# ephemeral and wiped between tasks. Running them together ensures they share 
+# the same generated HTML file.
+
+- import_playbook: generate_report.yml
+- import_playbook: deliver_report.yml

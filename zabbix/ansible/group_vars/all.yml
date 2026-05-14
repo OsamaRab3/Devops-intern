@@ -6,10 +6,10 @@ grafana_auth_token: "{{ lookup('env', 'GRAFANA_AUTH_TOKEN') }}"
 zabbix_url: "{{ lookup('env', 'ZABBIX_URL') }}"
 zabbix_auth_token: "{{ lookup('env', 'ZABBIX_AUTH_TOKEN') }}"
 
-# Output configuration
-report_output_file: "~/Workspace/DevOps-intern/zabbix/ansible/zabbix_report.html"
-monitoring_data_output: "~/Workspace/DevOps-intern/zabbix/ansible/monitoring_data.json"
-monitoring_html_output: "~/Workspace/DevOps-intern/zabbix/ansible/monitoring_data.html"
+# Output configuration - Uses playbook_dir to dynamically save alongside the playbook
+report_output_file: "{{ playbook_dir }}/zabbix_report.html"
+monitoring_data_output: "{{ playbook_dir }}/monitoring_data.json"
+monitoring_html_output: "{{ playbook_dir }}/monitoring_data.html"
 
 # Metrics extraction settings
 metrics_days_back: 30
